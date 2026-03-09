@@ -135,4 +135,4 @@ Your site will be live at your Vercel project URL (e.g. `https://edu-viewer.verc
 
 
 ## GITHUB actions release deploy
-gh release create v1.0.1 .next.zip --title "v1.0.1" --notes ""
+      gh release create v1.0.1 .next.zip --title "v1.0.1" --notes ""
