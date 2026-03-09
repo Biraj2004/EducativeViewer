@@ -1,5 +1,12 @@
 # ──────────────────────────────────────────────────────────────────────────────
-# Automated Vercel deployment — triggered on every push to `main`.
+# Automated Vercel deployment — triggered when a GitHub Release is published.
+#
+# HOW IT WORKS:
+#   1. Create a new Release in GitHub (any tag).
+#   2. Upload your .next.zip as a release asset (any *.zip name works).
+#   3. Publish the release — this workflow fires automatically.
+#   4. The zip is downloaded, extracted into nextBuild/, paths are patched,
+#      and the result is deployed to Vercel.
 #
 # REQUIRED SETUP (one-time, in GitHub repo Settings → Secrets and variables → Actions)
 #
@@ -21,20 +28,13 @@
 # │  Alternatively, visit vercel.com → Project Settings → General            │
 # │  and copy the Project ID shown at the bottom of the page.                │
 # └──────────────────────────────────────────────────────────────────────────┘
-#
-# NOTES:
-#   - .next.zip must be committed to the repository (it is not gitignored).
-#   - The script fetches rootDirectory from the Vercel API automatically.
-#     If your project has rootDirectory set (e.g. "client"), files will be
-#     mirrored into that subfolder before deployment.
 # ──────────────────────────────────────────────────────────────────────────────
 
 name: Deploy to Vercel
 
 on:
-  push:
-    branches:
-      - main
+  release:
+    types: [published]
 
 jobs:
   deploy:
@@ -50,14 +50,34 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Cache Vercel CLI
+        id: cache-vercel-cli
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm-global
+          key: vercel-cli-${{ runner.os }}-${{ hashFiles('**/package.json') }}
+          restore-keys: vercel-cli-${{ runner.os }}-
+
       - name: Install Vercel CLI
-        run: npm install -g vercel@latest
+        if: steps.cache-vercel-cli.outputs.cache-hit != 'true'
+        run: |
+          npm config set prefix ~/.npm-global
+          npm install -g vercel@latest
+
+      - name: Add Vercel CLI to PATH
+        run: echo "$HOME/.npm-global/bin" >> $GITHUB_PATH
+
+      # Download the first *.zip asset attached to the release.
+      # The GitHub CLI (gh) is pre-installed on all GitHub-hosted runners.
+      - name: Download release zip
+        run: gh release download "${{ github.event.release.tag_name }}" --pattern "*.zip" --output .next.zip
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
 
       # Runs prepare-deploy.js:
       #   1. Extracts .next.zip → nextBuild/
       #   2. Patches required-server-files.json paths
       #   3. Writes vercel.json + .vercelignore
-      #   4. Mirrors files into rootDirectory/ (fetched from Vercel API)
       - name: Prepare build output
         run: node prepare-deploy.js
         env:
